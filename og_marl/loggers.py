@@ -71,14 +71,17 @@ class WandbLogger(BaseLogger):
         if time.time() - self._last_log > self._log_every or force:
             wandb.log(logs)
 
-            for key, log in logs.items():
-                print(f"{key}: {float(log)} |", end=" ")
-            print()
+            # for key, log in logs.items():
+            #     print(f"{key}: {float(log)} |", end=" ")
+            # print()
 
             if not force:
                 self._last_log = time.time()
 
         self._ctr += 1
+
+        if self._ctr % 1000 == 0:
+            print(self._ctr)
 
     def close(self) -> None:
         wandb.finish()

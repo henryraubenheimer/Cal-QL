@@ -39,6 +39,8 @@ class BaseMARLSystem:
 
         self._env_step_ctr = 0.0
 
+        self.counter = 0
+
     def get_stats(self) -> Dict[str, Numeric]:
         return {}
 
@@ -121,7 +123,7 @@ class BaseMARLSystem:
                 time_to_step = end_time - start_time
 
                 # Add step to replay buffer
-                replay_buffer.add(observations, actions, rewards, terminals, truncations, infos)
+                replay_buffer.add(observations, actions, rewards, terminals, truncations, infos, self._discount)
 
                 # Critical!!
                 observations = next_observations
@@ -142,6 +144,7 @@ class BaseMARLSystem:
 
                     # Train step
                     start_time = time.time()
+                    self.counter += 1
                     train_logs = self.train_step(experience)
                     end_time = time.time()
                     time_train_step = end_time - start_time
@@ -161,7 +164,7 @@ class BaseMARLSystem:
                         "Env Steps Per Second": env_steps_per_second,
                     }
 
-                    self._logger.write(train_logs)
+                    self._logger.write(train_logs, force=True)
 
                 if all(terminals.values()) or all(truncations.values()):
                     break
@@ -179,6 +182,8 @@ class BaseMARLSystem:
 
             if self._env_step_ctr > max_env_steps:
                 break
+
+        print('\nCOUNTER: '+str(self.counter)+'\n')
 
     def train_offline(
         self,
@@ -215,6 +220,7 @@ class BaseMARLSystem:
             time_to_sample = end_time - start_time
 
             start_time = time.time()
+            self.counter += 1
             train_logs = self.train_step(experience)
             end_time = time.time()
             time_train_step = end_time - start_time
@@ -229,7 +235,7 @@ class BaseMARLSystem:
                 "Train Steps Per Second": train_steps_per_second,
             }
 
-            self._logger.write(logs)
+            self._logger.write(logs, force=True)
 
             trainer_step_ctr += 1
 
@@ -246,6 +252,7 @@ class BaseMARLSystem:
             )
             json_writer.close()
 
+        print('\nCOUNTER: '+str(self.counter)+'\n')
         return render_frames
 
     def reset(self) -> None:

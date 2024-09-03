@@ -54,7 +54,7 @@ class IDRQNSystem(BaseMARLSystem):
         target_update_period: int = 200,
         learning_rate: float = 3e-4,
         eps_min: float = 0.05,
-        eps_decay_timesteps: int = 50_000,
+        eps_decay_timesteps: int = 10_000,
         add_agent_id_to_obs: bool = False,
         observation_embedding_network: Optional[snt.Module] = None,
     ):
@@ -182,8 +182,8 @@ class IDRQNSystem(BaseMARLSystem):
         observations = experience["observations"]  # (B,T,N,O)
         actions = experience["actions"]  # (B,T,N)
         rewards = experience["rewards"]  # (B,T,N)
-        truncations = experience["truncations"]  # (B,T,N)
-        terminals = experience["terminals"]  # (B,T,N)
+        truncations = tf.cast(experience["truncations"], "float32")  # (B,T,N)
+        terminals = tf.cast(experience["terminals"], "float32")  # (B,T,N)
         legal_actions = experience["infos"]["legals"]  # (B,T,N,A)
 
         # When to reset the RNN hidden state

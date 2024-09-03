@@ -55,6 +55,31 @@ class FlashbaxReplayBuffer:
         self._buffer_state: TrajectoryBufferState = None
         self._rng_key = jax.random.PRNGKey(seed)
 
+        self.episode_timesteps = []
+
+    def compute_rewards_to_go(self, experience, discount):
+        rewards = experience["rewards"]
+        terminals = experience["terminals"]
+
+        B, T, N = rewards.shape
+
+        rewards_to_go = np.zeros((B, T))
+
+        for b in range(B):
+
+            prev_return = 0
+            for t in range(T):
+                reverse_t = T - t - 1
+
+                rewards_to_go[b, reverse_t] = rewards[b, reverse_t, 0] + discount * prev_return * (1-terminals[b, reverse_t, 0])
+
+                prev_return = rewards_to_go[b, reverse_t]
+
+        rewards_to_go = np.stack([rewards_to_go] * N, axis=2)
+        experience["rewards_to_go"] = rewards_to_go
+
+        return experience
+
     def add(
         self,
         observations: Dict[str, np.ndarray],
@@ -63,23 +88,51 @@ class FlashbaxReplayBuffer:
         terminals: Dict[str, np.ndarray],
         truncations: Dict[str, np.ndarray],
         infos: Dict[str, Any],
+        discount: float = 0.99
     ) -> None:
+        stacked_infos = {}
+        for key, value in infos.items():
+            if isinstance(value, dict):
+                stacked_infos[key] = np.stack(list(value.values()), axis=0)
+            else:
+                stacked_infos[key] = value
+
         timestep = {
-            "observations": observations,
-            "actions": actions,
-            "rewards": rewards,
-            "terminals": terminals,
-            "truncations": truncations,
-            "infos": infos,
+            "observations": np.stack(list(observations.values()), axis=0),
+            "actions": np.stack(list(actions.values()), axis=0),
+            "rewards": np.stack(list(rewards.values()), axis=0),
+            "terminals": np.stack(list(terminals.values()), axis=0),
+            "truncations": np.stack(list(truncations.values()), axis=0),
+            "infos": stacked_infos
         }
 
-        if self._buffer_state is None:
-            self._buffer_state = self._replay_buffer.init(timestep)
+        self.episode_timesteps.append(timestep)
+        if timestep["terminals"][0] or timestep["truncations"][0]:
+            experience = {}
+            experience["rewards"] = np.array([np.stack([timestep["rewards"] for timestep in self.episode_timesteps])])
+            experience["terminals"] = np.array([np.stack([timestep["terminals"] for timestep in self.episode_timesteps])])
+            experience = self.compute_rewards_to_go(experience, discount)
 
-        timestep = tree.map_structure(
-            lambda x: jnp.expand_dims(jnp.expand_dims(jnp.array(x), 0), 0), timestep
-        )  # add batch & time dims
-        self._buffer_state = self._buffer_add_fn(self._buffer_state, timestep)
+            for i in range(len(self.episode_timesteps)):
+                self.episode_timesteps[i]["rewards_to_go"] = experience["rewards_to_go"][0, i, :]
+
+                if self._buffer_state is None:
+                    self._buffer_state = self._replay_buffer.init(self.episode_timesteps[i])
+
+                timestep = tree.map_structure(
+                    lambda x: jnp.expand_dims(jnp.expand_dims(jnp.array(x), 0), 0), self.episode_timesteps[i]
+                )  # add batch & time dims
+                self._buffer_state = self._buffer_add_fn(self._buffer_state, timestep)
+
+            self.episode_timesteps = []
+
+        # if self._buffer_state is None:
+        #     self._buffer_state = self._replay_buffer.init(timestep)
+
+        # timestep = tree.map_structure(
+        #     lambda x: jnp.expand_dims(jnp.expand_dims(jnp.array(x), 0), 0), timestep
+        # )  # add batch & time dims
+        # self._buffer_state = self._buffer_add_fn(self._buffer_state, timestep)
 
     def sample(self) -> Experience:
         self._rng_key, sample_key = jax.random.split(self._rng_key, 2)
@@ -87,7 +140,7 @@ class FlashbaxReplayBuffer:
         return batch.experience  # type: ignore
 
     def populate_from_vault(
-        self, env_name: str, scenario_name: str, dataset_name: str, rel_dir: str = "vaults"
+        self, env_name: str, scenario_name: str, dataset_name: str, rel_dir: str = "vaults", discount: float = 0.99
     ) -> bool:
         try:
             self._buffer_state = Vault(
@@ -95,6 +148,16 @@ class FlashbaxReplayBuffer:
                 vault_uid=dataset_name,
                 rel_dir=rel_dir,
             ).read()
+
+            # Compute rewards to go
+            experience_with_rewards_to_go = self.compute_rewards_to_go(self._buffer_state.experience, discount)
+
+            #make new buffer state
+            self._buffer_state = TrajectoryBufferState(
+                experience=experience_with_rewards_to_go,
+                is_full=self._buffer_state.is_full,
+                current_index=self._buffer_state.is_full
+            )
 
             # Recreate the buffer and associated pure functions
             self._replay_buffer = fbx.make_trajectory_buffer(

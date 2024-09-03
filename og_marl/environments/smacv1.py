@@ -80,6 +80,8 @@ class SMACv1(BaseEnvironment):
         # Step the SMAC environment
         reward, done, _ = self._environment.step(smac_actions)
 
+        # self._environment.render()
+
         # Get the next observations
         observations = self._environment.get_obs()
         observations = {agent: observations[i] for i, agent in enumerate(self.possible_agents)}

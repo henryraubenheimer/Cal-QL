@@ -21,6 +21,10 @@ def get_system(  # noqa: C901
         from og_marl.tf2.systems.idrqn_cql import IDRQNCQLSystem
 
         return IDRQNCQLSystem(environment, logger, **kwargs)
+    elif system_name == "idrqn+calql":
+        from og_marl.tf2.systems.idrqn_calql import IDRQNCALQLSystem
+
+        return IDRQNCALQLSystem(environment, logger, **kwargs)
     elif system_name == "idrqn+bcq":
         from og_marl.tf2.systems.idrqn_bcq import IDRQNBCQSystem
 
