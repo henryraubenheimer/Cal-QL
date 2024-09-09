@@ -180,8 +180,12 @@ class IDRQNCALQLSystem(IDRQNSystem):
             #### end ####
             #############
 
-            # Mask out zero-padded timesteps
-            loss = td_loss + cql_loss
+            if self._cql_weight == 0.0:
+                # Mask out zero-padded timesteps
+                loss = td_loss
+            else:
+                # Mask out zero-padded timesteps
+                loss = td_loss + self._cql_weight * cql_loss
 
         # Get trainable variables
         variables = (

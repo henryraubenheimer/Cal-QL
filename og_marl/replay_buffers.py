@@ -58,6 +58,7 @@ class FlashbaxReplayBuffer:
         self.episode_timesteps = []
 
     def compute_rewards_to_go(self, experience, discount):
+
         rewards = experience["rewards"]
         terminals = experience["terminals"]
 
@@ -74,6 +75,9 @@ class FlashbaxReplayBuffer:
                 rewards_to_go[b, reverse_t] = rewards[b, reverse_t, 0] + discount * prev_return * (1-terminals[b, reverse_t, 0])
 
                 prev_return = rewards_to_go[b, reverse_t]
+
+                if t % 10000 == 0:
+                    print(100 * t / T)
 
         rewards_to_go = np.stack([rewards_to_go] * N, axis=2)
         experience["rewards_to_go"] = rewards_to_go
