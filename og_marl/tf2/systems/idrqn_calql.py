@@ -120,7 +120,7 @@ class IDRQNCALQLSystem(IDRQNSystem):
             # Pick the Q-Values for the actions taken by each agent
             chosen_action_qs = gather(qs_out, actions, axis=3, keepdims=False)
 
-            # Max over target Q-Values/ Double q learning
+            # Max over target Q-Values/ Double q-learning
             qs_out_selector = tf.where(
                 tf.cast(legal_actions, "bool"), qs_out, -9999999
             )  # legal action masking
