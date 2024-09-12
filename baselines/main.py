@@ -79,11 +79,11 @@ def main(_):
 
     system = get_system(FLAGS.system, env, logger, **system_kwargs)
 
-    #system.train_offline(buffer, max_trainer_steps=FLAGS.trainer_steps, json_writer=json_writer, evaluate_every=25, num_eval_episodes=1)
+    system.train_offline(buffer, max_trainer_steps=FLAGS.trainer_steps, json_writer=json_writer, evaluate_every=25, num_eval_episodes=1)
     system._env_step_ctr = 0.0
     system._cql_weight = 0.0
     online_replay_buffer = FlashbaxReplayBuffer(sequence_length=20, sample_period=1)
-    system.train_online(online_replay_buffer, max_env_steps=2000000, train_period=1)
+    system.train_online(online_replay_buffer, max_env_steps=50000, train_period=1)
 
 if __name__ == "__main__":
     app.run(main)

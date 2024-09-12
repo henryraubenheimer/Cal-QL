@@ -171,6 +171,8 @@ class IDRQNCQLSystem(IDRQNSystem):
                 # Mask out zero-padded timesteps
                 loss = td_loss + self._cql_weight * cql_loss
 
+            #loss = td_loss + self._cql_weight * cql_loss
+
         # Get trainable variables
         variables = (
             *self._q_network.trainable_variables,
