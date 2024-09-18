@@ -73,7 +73,7 @@ class QMIXCQLSystem(QMIXSystem):
 
         # CQL
         self._num_ood_actions = num_ood_actions
-        self._cql_weight = cql_weight
+        self._cql_weight = tf.Variable(cql_weight)
 
     @tf.function(jit_compile=True)
     def _tf_train_step(self, train_step: int, experience: Dict[str, Any]) -> Dict[str, Numeric]:

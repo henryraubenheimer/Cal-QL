@@ -49,7 +49,7 @@ class QMIXSystem(IDRQNSystem):
         mixer_hyper_dim: int = 64,
         discount: float = 0.99,
         target_update_period: int = 200,
-        learning_rate: float = 3e-4,
+        learning_rate: float = 1e-3,
         eps_decay_timesteps: int = 50_000,
         add_agent_id_to_obs: bool = False,
         observation_embedding_network: Optional[snt.Module] = None,
@@ -87,8 +87,8 @@ class QMIXSystem(IDRQNSystem):
         actions = experience["actions"]  # (B,T,N)
         env_states = experience["infos"]["state"]  # (B,T,S)
         rewards = experience["rewards"]  # (B,T,N)
-        truncations = experience["truncations"]  # (B,T,N)
-        terminals = experience["terminals"]  # (B,T,N)
+        truncations = tf.cast(experience["truncations"], "float32")  # (B,T,N)
+        terminals = tf.cast(experience["terminals"], "float32")  # (B,T,N)
         legal_actions = experience["infos"]["legals"]  # (B,T,N,A)
 
         done = terminals
@@ -179,8 +179,6 @@ class QMIXSystem(IDRQNSystem):
 
         # Compute gradients.
         gradients = tape.gradient(loss, variables)
-
-        gradients, _ = tf.clip_by_global_norm(gradients, 5.0)
 
         # Apply gradients.
         self._optimizer.apply(gradients, variables)

@@ -27,9 +27,9 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string("env", "smac_v1", "Environment name.")
 flags.DEFINE_string("scenario", "3m", "Environment scenario name.")
 flags.DEFINE_string("dataset", "Good", "Dataset type.: 'Good', 'Medium', 'Poor' or 'Replay' ")
-flags.DEFINE_string("system", "idrqn+calql", "System name.")
+flags.DEFINE_string("system", "qmix+cql", "System name.")
 flags.DEFINE_integer("seed", 42, "Seed.")
-flags.DEFINE_float("trainer_steps", 50000, "Number of training steps.")
+flags.DEFINE_float("trainer_steps", 1000, "Number of training steps.")
 flags.DEFINE_integer("batch_size", 64, "Number of training steps.")
 
 
@@ -63,15 +63,7 @@ def main(_):
 
     logger = WandbLogger(project="qmix-test", config=config)
 
-    json_writer = JsonWriter(
-        "logs",
-        f"{FLAGS.system}",
-        f"{FLAGS.scenario}_{FLAGS.dataset}",
-        FLAGS.env,
-        FLAGS.seed,
-        file_name=f"{FLAGS.scenario}_{FLAGS.dataset}_{FLAGS.seed}.json",
-        save_to_wandb=True,
-    )
+    json_writer = None
 
     system_kwargs = {"add_agent_id_to_obs": True}
     if FLAGS.scenario == "pursuit":
@@ -79,11 +71,15 @@ def main(_):
 
     system = get_system(FLAGS.system, env, logger, **system_kwargs)
 
-    system.train_offline(buffer, max_trainer_steps=FLAGS.trainer_steps, json_writer=json_writer, evaluate_every=25, num_eval_episodes=1)
+    system.train_offline(buffer, max_trainer_steps=FLAGS.trainer_steps, json_writer=json_writer, evaluate_every=500, num_eval_episodes=4)
+
+    # Swap to online
     system._env_step_ctr = 0.0
-    system.cql_weight = 0.0
+    system._cql_weight.assign(0.0)
+    system._eps_decay_timesteps = 0
+
     online_replay_buffer = FlashbaxReplayBuffer(sequence_length=20, sample_period=1)
-    system.train_online(online_replay_buffer, max_env_steps=50000, train_period=1)
+    system.train_online(online_replay_buffer, max_env_steps=50000, train_period=20)
 
 if __name__ == "__main__":
     app.run(main)
