@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Implementation of IDRQN+CQL"""
+"""Implementation of IDRQN+Cal-QL"""
 from typing import Any, Dict, Optional
 
 import jax.numpy as jnp
@@ -136,9 +136,9 @@ class IDRQNCALQLSystem(IDRQNSystem):
             # TD-Error Loss
             td_loss = tf.reduce_mean(0.5 * tf.square(targets - chosen_action_qs[:, :-1]))
 
-            #################
-            #### Cal-CQL ####
-            #################
+            ################
+            #### Cal-QL ####
+            ################
 
             random_ood_actions = tf.random.uniform(
                 shape=(self._num_ood_actions, B, T, N), minval=0, maxval=A, dtype=tf.dtypes.int64
@@ -180,14 +180,14 @@ class IDRQNCALQLSystem(IDRQNSystem):
             #### end ####
             #############
 
-            # if self._cql_weight == 0.0:
-            #     # Mask out zero-padded timesteps
-            #     loss = td_loss
-            # else:
-            #     # Mask out zero-padded timesteps
-            #     loss = td_loss + self._cql_weight * cql_loss
+            if self._cql_weight == 0.0:
+                # Mask out zero-padded timesteps
+                loss = td_loss
+            else:
+                # Mask out zero-padded timesteps
+                loss = td_loss + self._cql_weight * cql_loss
 
-            loss = td_loss + self._cql_weight * cql_loss
+            #loss = td_loss + self._cql_weight * cql_loss
 
         # Get trainable variables
         variables = (

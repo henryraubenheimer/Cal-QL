@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Implementation of QMIX+CQL"""
+"""Implementation of QMIX+Cal-QL"""
 from typing import Any, Dict, Optional
 
 import tensorflow as tf
@@ -35,9 +35,9 @@ from og_marl.tf2.utils import (
 set_growing_gpu_memory()
 
 
-class QMIXCQLSystem(QMIXSystem):
+class QMIXCALQLSystem(QMIXSystem):
 
-    """QMIX+CQL System"""
+    """QMIX+Cal-QL System"""
 
     def __init__(
         self,
@@ -85,6 +85,7 @@ class QMIXCQLSystem(QMIXSystem):
         truncations = tf.cast(experience["truncations"], "float32")  # (B,T,N)
         terminals = tf.cast(experience["terminals"], "float32")  # (B,T,N)
         legal_actions = experience["infos"]["legals"]  # (B,T,N,A)
+        rewards_to_go = experience["rewards_to_go"] # (B,T,N)
 
         # When to reset the RNN hidden state
         resets = tf.maximum(terminals, truncations)  # equivalent to logical 'or'
@@ -157,9 +158,9 @@ class QMIXCQLSystem(QMIXSystem):
             # TD-Error Loss
             td_loss = tf.reduce_mean(0.5 * tf.square(targets - chosen_action_qs[:, :-1]))
 
-            #############
-            #### CQL ####
-            #############
+            ################
+            #### Cal-QL ####
+            ################
 
             random_ood_actions = tf.random.uniform(
                 shape=(self._num_ood_actions, B, T, N), minval=0, maxval=A, dtype=tf.dtypes.int64
@@ -177,6 +178,8 @@ class QMIXCQLSystem(QMIXSystem):
                 mixed_ood_qs = self._mixer(ood_qs, env_state_embeddings)  # [B, T, 1]
                 all_mixed_ood_qs.append(mixed_ood_qs)  # [B, T, Ra]
 
+            chosen_action_qs = tf.maximum(chosen_action_qs, rewards_to_go)
+
             all_mixed_ood_qs.append(chosen_action_qs)  # [B, T, Ra + 1]
             all_mixed_ood_qs = tf.concat(all_mixed_ood_qs, axis=-1)
 
@@ -188,8 +191,15 @@ class QMIXCQLSystem(QMIXSystem):
             #### end ####
             #############
 
+            if self._cql_weight == 0.0:
+                # Mask out zero-padded timesteps
+                loss = td_loss
+            else:
+                # Mask out zero-padded timesteps
+                loss = td_loss + self._cql_weight * cql_loss
+
             # Add cql_loss to loss
-            loss = td_loss + self._cql_weight * cql_loss
+            #loss = td_loss + self._cql_weight * cql_loss
 
         # Get trainable variables
         variables = (

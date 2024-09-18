@@ -61,7 +61,7 @@ def main(_):
     # with open('buffer_5m_vs_6m.pkl', 'wb') as file:
     #     dill.dump(buffer, file)
 
-    logger = WandbLogger(project="og-marl-baselines", config=config)
+    logger = WandbLogger(project="qmix-test", config=config)
 
     json_writer = JsonWriter(
         "logs",
@@ -81,7 +81,7 @@ def main(_):
 
     system.train_offline(buffer, max_trainer_steps=FLAGS.trainer_steps, json_writer=json_writer, evaluate_every=25, num_eval_episodes=1)
     system._env_step_ctr = 0.0
-    system._cql_weight = 0.0
+    system.cql_weight = 0.0
     online_replay_buffer = FlashbaxReplayBuffer(sequence_length=20, sample_period=1)
     system.train_online(online_replay_buffer, max_env_steps=50000, train_period=1)
 

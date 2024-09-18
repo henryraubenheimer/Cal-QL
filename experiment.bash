@@ -1,13 +1,10 @@
 #!/bin/bash
 
-# Command to run
-command="python baselines/main.py --system=idrqn+cql --dataset=Medium"
-
 # Number of times to run the command
-num_runs=4
+num_runs=10
 
 # Loop to run the command multiple times
-for i in $(seq 1 $num_runs); do
-    echo "Run #$i"
+for i in $(seq 6 $num_runs); do
+    command="python baselines/main.py --system=idrqn+cql --dataset=Poor --seed=$i"
     $command
 done
