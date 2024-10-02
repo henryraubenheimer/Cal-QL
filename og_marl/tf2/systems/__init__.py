@@ -37,6 +37,10 @@ def get_system(  # noqa: C901
         from og_marl.tf2.systems.qmix_cql import QMIXCQLSystem
 
         return QMIXCQLSystem(environment, logger, **kwargs)
+    elif system_name == "qmix+calql":
+        from og_marl.tf2.systems.qmix_calql import QMIXCALQLSystem
+
+        return QMIXCALQLSystem(environment, logger, **kwargs)
     elif system_name == "maicq":
         from og_marl.tf2.systems.maicq import MAICQSystem
 

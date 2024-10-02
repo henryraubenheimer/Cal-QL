@@ -50,6 +50,8 @@ class IDRQNCALQLSystem(IDRQNSystem):
         learning_rate: float = 3e-4,
         add_agent_id_to_obs: bool = False,
         observation_embedding_network: Optional[snt.Module] = None,
+        eps_min: float = 0.05,
+        eps_decay_timesteps: int = 1,
     ):
         super().__init__(
             environment,
@@ -61,11 +63,13 @@ class IDRQNCALQLSystem(IDRQNSystem):
             target_update_period=target_update_period,
             learning_rate=learning_rate,
             observation_embedding_network=observation_embedding_network,
+            eps_min=eps_min,
+            eps_decay_timesteps=eps_decay_timesteps
         )
 
         # CQL
         self._num_ood_actions = num_ood_actions
-        self._cql_weight = cql_weight
+        self._cql_weight = tf.Variable(cql_weight)
 
     @tf.function(jit_compile=True)
     def _tf_train_step(self, train_step: int, experience: Dict[str, Any]) -> Dict[str, Numeric]:
@@ -180,14 +184,14 @@ class IDRQNCALQLSystem(IDRQNSystem):
             #### end ####
             #############
 
-            if self._cql_weight == 0.0:
-                # Mask out zero-padded timesteps
-                loss = td_loss
-            else:
-                # Mask out zero-padded timesteps
-                loss = td_loss + self._cql_weight * cql_loss
+            # if self._cql_weight == 0.0:
+            #     # Mask out zero-padded timesteps
+            #     loss = td_loss
+            # else:
+            #     # Mask out zero-padded timesteps
+            #     loss = td_loss + self._cql_weight * cql_loss
 
-            #loss = td_loss + self._cql_weight * cql_loss
+            loss = td_loss + self._cql_weight * cql_loss
 
         # Get trainable variables
         variables = (

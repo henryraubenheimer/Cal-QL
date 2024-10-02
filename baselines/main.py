@@ -27,9 +27,9 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string("env", "smac_v1", "Environment name.")
 flags.DEFINE_string("scenario", "3m", "Environment scenario name.")
 flags.DEFINE_string("dataset", "Poor", "Dataset type.: 'Good', 'Medium', 'Poor' or 'Replay' ")
-flags.DEFINE_string("system", "qmix+cql", "System name.")
+flags.DEFINE_string("system", "idrqn+cql", "System name.")
 flags.DEFINE_integer("seed", 42, "Seed.")
-flags.DEFINE_float("trainer_steps", 1000, "Number of training steps.")
+flags.DEFINE_float("trainer_steps", 50000, "Number of training steps.")
 flags.DEFINE_integer("batch_size", 64, "Number of training steps.")
 
 
@@ -53,21 +53,14 @@ def main(_):
         print("Vault not found. Exiting.")
         return
 
-    # import dill
-    # with open('buffer_5m_vs_6m.pkl', 'rb') as file:
-    #     buffer = dill.load(file)
-
-    # import dill
-    # with open('buffer_5m_vs_6m.pkl', 'wb') as file:
-    #     dill.dump(buffer, file)
-
-    logger = WandbLogger(project="qmix-test", config=config)
+    logger = WandbLogger(project=FLAGS.system+" - "+FLAGS.scenario)
+    #logger = WandbLogger(project=str(FLAGS.trainer_steps)+"_", config=config)
 
     json_writer = None
 
     system_kwargs = {
         "add_agent_id_to_obs": True,
-        "eps_decay_timesteps": 1.0, # IMPORTANT: set this to one when doing offline pre-training, else set to 50_000
+        "eps_decay_timesteps": 1, # IMPORTANT: set this to one when doing offline pre-training, else set to 50_000
     }
 
     system = get_system(FLAGS.system, env, logger, **system_kwargs)
@@ -80,7 +73,7 @@ def main(_):
     system._eps_decay_timesteps = 0
 
     online_replay_buffer = FlashbaxReplayBuffer(sequence_length=20, sample_period=1)
-    system.train_online(online_replay_buffer, max_env_steps=50000, train_period=20)
+    system.train_online(online_replay_buffer, max_env_steps=100000, train_period=20)
 
 if __name__ == "__main__":
     app.run(main)
