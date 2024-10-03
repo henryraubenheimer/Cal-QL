@@ -25,11 +25,11 @@ set_growing_gpu_memory()
 
 FLAGS = flags.FLAGS
 flags.DEFINE_string("env", "smac_v1", "Environment name.")
-flags.DEFINE_string("scenario", "3m", "Environment scenario name.")
+flags.DEFINE_string("scenario", "2s3z", "Environment scenario name.")
 flags.DEFINE_string("dataset", "Poor", "Dataset type.: 'Good', 'Medium', 'Poor' or 'Replay' ")
-flags.DEFINE_string("system", "idrqn+cql", "System name.")
+flags.DEFINE_string("system", "qmix+cql", "System name.")
 flags.DEFINE_integer("seed", 42, "Seed.")
-flags.DEFINE_float("trainer_steps", 50000, "Number of training steps.")
+flags.DEFINE_float("trainer_steps", 10000, "Number of training steps.")
 flags.DEFINE_integer("batch_size", 64, "Number of training steps.")
 
 
@@ -44,7 +44,7 @@ def main(_):
 
     env = get_environment(FLAGS.env, FLAGS.scenario)
 
-    buffer = FlashbaxReplayBuffer(sequence_length=20, sample_period=1)
+    buffer = FlashbaxReplayBuffer(sequence_length=20, sample_period=1, batch_size=FLAGS.batch_size)
 
     download_and_unzip_vault(FLAGS.env, FLAGS.scenario)
 
@@ -61,18 +61,20 @@ def main(_):
     system_kwargs = {
         "add_agent_id_to_obs": True,
         "eps_decay_timesteps": 1, # IMPORTANT: set this to one when doing offline pre-training, else set to 50_000
+        "learning_rate": 1e-4,
+        "num_ood_actions": 20
     }
 
     system = get_system(FLAGS.system, env, logger, **system_kwargs)
-    system._cql_weight.assign(4.5)
+    system._cql_weight.assign(10)
     system.train_offline(buffer, max_trainer_steps=FLAGS.trainer_steps, json_writer=json_writer, evaluate_every=500, num_eval_episodes=4)
 
     # Swap to online
     system._env_step_ctr = 0.0
-    system._cql_weight.assign(2.25)
+    system._cql_weight.assign(0)
     system._eps_decay_timesteps = 0
 
-    online_replay_buffer = FlashbaxReplayBuffer(sequence_length=20, sample_period=1)
+    online_replay_buffer = FlashbaxReplayBuffer(sequence_length=20, sample_period=1, batch_size=FLAGS.batch_size)
     system.train_online(online_replay_buffer, max_env_steps=50000, train_period=20)
 
 if __name__ == "__main__":
