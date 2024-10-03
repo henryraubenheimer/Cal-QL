@@ -53,7 +53,7 @@ def main(_):
         print("Vault not found. Exiting.")
         return
 
-    logger = WandbLogger(project=FLAGS.system+" - "+FLAGS.scenario)
+    logger = WandbLogger(project=FLAGS.system+" - "+FLAGS.scenario+" - "+FLAGS.dataset)
     #logger = WandbLogger(project=str(FLAGS.trainer_steps)+"_", config=config)
 
     json_writer = None
@@ -64,16 +64,16 @@ def main(_):
     }
 
     system = get_system(FLAGS.system, env, logger, **system_kwargs)
-
+    system._cql_weight.assign(4.5)
     system.train_offline(buffer, max_trainer_steps=FLAGS.trainer_steps, json_writer=json_writer, evaluate_every=500, num_eval_episodes=4)
 
     # Swap to online
     system._env_step_ctr = 0.0
-    system._cql_weight.assign(0.0)
+    system._cql_weight.assign(2.25)
     system._eps_decay_timesteps = 0
 
     online_replay_buffer = FlashbaxReplayBuffer(sequence_length=20, sample_period=1)
-    system.train_online(online_replay_buffer, max_env_steps=100000, train_period=20)
+    system.train_online(online_replay_buffer, max_env_steps=50000, train_period=20)
 
 if __name__ == "__main__":
     app.run(main)
