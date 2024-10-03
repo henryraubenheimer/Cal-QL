@@ -44,7 +44,7 @@ def main(_):
 
     env = get_environment(FLAGS.env, FLAGS.scenario)
 
-    buffer = FlashbaxReplayBuffer(sequence_length=20, sample_period=1, batch_size=FLAGS.batch_size)
+    buffer = FlashbaxReplayBuffer(sequence_length=10, sample_period=1, batch_size=FLAGS.batch_size)
 
     download_and_unzip_vault(FLAGS.env, FLAGS.scenario)
 
@@ -61,8 +61,8 @@ def main(_):
     system_kwargs = {
         "add_agent_id_to_obs": True,
         "eps_decay_timesteps": 1, # IMPORTANT: set this to one when doing offline pre-training, else set to 50_000
-        "learning_rate": 1e-4,
-        "num_ood_actions": 20
+        "learning_rate": 1e-4, # 1e-5, 5e-5, 1e-4, 3e-4, 1e-3
+        "num_ood_actions": 20 # 10, 20, 30
     }
 
     system = get_system(FLAGS.system, env, logger, **system_kwargs)
@@ -74,7 +74,7 @@ def main(_):
     system._cql_weight.assign(0)
     system._eps_decay_timesteps = 0
 
-    online_replay_buffer = FlashbaxReplayBuffer(sequence_length=20, sample_period=1, batch_size=FLAGS.batch_size)
+    online_replay_buffer = FlashbaxReplayBuffer(sequence_length=10, sample_period=1, batch_size=FLAGS.batch_size)
     system.train_online(online_replay_buffer, max_env_steps=50000, train_period=20)
 
 if __name__ == "__main__":
