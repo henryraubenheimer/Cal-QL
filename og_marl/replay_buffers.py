@@ -34,10 +34,12 @@ class FlashbaxReplayBuffer:
         batch_size: int = 32,
         sample_period: int = 1,
         seed: int = 42,
+        rewards_to_go: bool = False,
     ):
         self._sequence_length = sequence_length
         self._max_size = max_size
         self._batch_size = batch_size
+        self._rewards_to_go = rewards_to_go
 
         # Flashbax buffer
         self._replay_buffer = fbx.make_trajectory_buffer(
@@ -110,33 +112,34 @@ class FlashbaxReplayBuffer:
             "infos": stacked_infos
         }
 
-        self.episode_timesteps.append(timestep)
-        if timestep["terminals"][0] or timestep["truncations"][0]:
-            experience = {}
-            experience["rewards"] = np.array([np.stack([timestep["rewards"] for timestep in self.episode_timesteps])])
-            experience["terminals"] = np.array([np.stack([timestep["terminals"] for timestep in self.episode_timesteps])])
-            experience = self.compute_rewards_to_go(experience, discount)
+        if self._rewards_to_go:
+            self.episode_timesteps.append(timestep)
+            if timestep["terminals"][0] or timestep["truncations"][0]:
+                experience = {}
+                experience["rewards"] = np.array([np.stack([timestep["rewards"] for timestep in self.episode_timesteps])])
+                experience["terminals"] = np.array([np.stack([timestep["terminals"] for timestep in self.episode_timesteps])])
+                experience = self.compute_rewards_to_go(experience, discount)
 
-            for i in range(len(self.episode_timesteps)):
-                self.episode_timesteps[i]["rewards_to_go"] = experience["rewards_to_go"][0, i, :]
+                for i in range(len(self.episode_timesteps)):
+                    self.episode_timesteps[i]["rewards_to_go"] = experience["rewards_to_go"][0, i, :]
 
-                if self._buffer_state is None:
-                    self._buffer_state = self._replay_buffer.init(self.episode_timesteps[i])
+                    if self._buffer_state is None:
+                        self._buffer_state = self._replay_buffer.init(self.episode_timesteps[i])
 
-                timestep = tree.map_structure(
-                    lambda x: jnp.expand_dims(jnp.expand_dims(jnp.array(x), 0), 0), self.episode_timesteps[i]
-                )  # add batch & time dims
-                self._buffer_state = self._buffer_add_fn(self._buffer_state, timestep)
+                    timestep = tree.map_structure(
+                        lambda x: jnp.expand_dims(jnp.expand_dims(jnp.array(x), 0), 0), self.episode_timesteps[i]
+                    )  # add batch & time dims
+                    self._buffer_state = self._buffer_add_fn(self._buffer_state, timestep)
 
-            self.episode_timesteps = []
+                self.episode_timesteps = []
+        else:
+            if self._buffer_state is None:
+                self._buffer_state = self._replay_buffer.init(timestep)
 
-        # if self._buffer_state is None:
-        #     self._buffer_state = self._replay_buffer.init(timestep)
-
-        # timestep = tree.map_structure(
-        #     lambda x: jnp.expand_dims(jnp.expand_dims(jnp.array(x), 0), 0), timestep
-        # )  # add batch & time dims
-        # self._buffer_state = self._buffer_add_fn(self._buffer_state, timestep)
+            timestep = tree.map_structure(
+                lambda x: jnp.expand_dims(jnp.expand_dims(jnp.array(x), 0), 0), timestep
+            )  # add batch & time dims
+            self._buffer_state = self._buffer_add_fn(self._buffer_state, timestep)
 
     def sample(self) -> Experience:
         self._rng_key, sample_key = jax.random.split(self._rng_key, 2)
@@ -153,16 +156,25 @@ class FlashbaxReplayBuffer:
                 rel_dir=rel_dir,
             ).read()
 
-            # Compute rewards to go
-            experience_with_rewards_to_go = self.compute_rewards_to_go(self._buffer_state.experience, discount)
+            self._buffer_state.experience["terminals"] = self._buffer_state.experience["terminals"].astype(bool)
+            self._buffer_state.experience["truncations"] = self._buffer_state.experience["truncations"].astype(bool)
 
-            #make new buffer state
-            self._buffer_state = TrajectoryBufferState(
-                experience=experience_with_rewards_to_go,
-                #experience=self._buffer_state.experience,
-                is_full=self._buffer_state.is_full,
-                current_index=self._buffer_state.is_full
-            )
+            if self._rewards_to_go:
+                # Compute rewards to go
+                experience_with_rewards_to_go = self.compute_rewards_to_go(self._buffer_state.experience, discount)
+                #make new buffer state
+                self._buffer_state = TrajectoryBufferState(
+                    experience=experience_with_rewards_to_go,
+                    is_full=self._buffer_state.is_full,
+                    current_index=self._buffer_state.is_full
+                )
+            else:
+                #make new buffer state
+                self._buffer_state = TrajectoryBufferState(
+                    experience=self._buffer_state.experience,
+                    is_full=self._buffer_state.is_full,
+                    current_index=self._buffer_state.is_full
+                )
 
             # Recreate the buffer and associated pure functions
             self._replay_buffer = fbx.make_trajectory_buffer(

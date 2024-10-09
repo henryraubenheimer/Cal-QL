@@ -29,8 +29,10 @@ flags.DEFINE_string("scenario", "2s3z", "Environment scenario name.")
 flags.DEFINE_string("dataset", "Poor", "Dataset type.: 'Good', 'Medium', 'Poor' or 'Replay' ")
 flags.DEFINE_string("system", "qmix+cql", "System name.")
 flags.DEFINE_integer("seed", 42, "Seed.")
-flags.DEFINE_float("trainer_steps", 10000, "Number of training steps.")
+flags.DEFINE_float("trainer_steps", 20000, "Number of training steps.")
 flags.DEFINE_integer("batch_size", 64, "Number of training steps.")
+flags.DEFINE_float("learning_rate", 1e-4, "Learning rate")
+flags.DEFINE_integer("num_ood_actions", 10, "Number of out of distribution actions")
 
 
 def main(_):
@@ -44,7 +46,8 @@ def main(_):
 
     env = get_environment(FLAGS.env, FLAGS.scenario)
 
-    buffer = FlashbaxReplayBuffer(sequence_length=10, sample_period=1, batch_size=FLAGS.batch_size)
+    r2go = "calql" in FLAGS.system
+    buffer = FlashbaxReplayBuffer(sequence_length=10, sample_period=1, batch_size=FLAGS.batch_size, max_size=20000, rewards_to_go=r2go)
 
     download_and_unzip_vault(FLAGS.env, FLAGS.scenario)
 
@@ -53,16 +56,18 @@ def main(_):
         print("Vault not found. Exiting.")
         return
 
-    logger = WandbLogger(project=FLAGS.system+" - "+FLAGS.scenario+" - "+FLAGS.dataset)
-    #logger = WandbLogger(project=str(FLAGS.trainer_steps)+"_", config=config)
+    #logger = WandbLogger(project=FLAGS.system+" - "+FLAGS.scenario+" - "+FLAGS.dataset, config=config)
+    logger = WandbLogger(project="test", config=config)
 
     json_writer = None
 
     system_kwargs = {
         "add_agent_id_to_obs": True,
         "eps_decay_timesteps": 1, # IMPORTANT: set this to one when doing offline pre-training, else set to 50_000
-        "learning_rate": 1e-4, # 1e-5, 5e-5, 1e-4, 3e-4, 1e-3
-        "num_ood_actions": 20 # 10, 20, 30
+        "learning_rate": FLAGS.learning_rate,
+        "num_ood_actions": FLAGS.num_ood_actions
+        # "learning_rate": 1e-4, # 1e-5, 5e-5, 1e-4, 3e-4, 1e-3
+        # "num_ood_actions": 20 # 10, 20, 30
     }
 
     system = get_system(FLAGS.system, env, logger, **system_kwargs)
@@ -73,9 +78,11 @@ def main(_):
     system._env_step_ctr = 0.0
     system._cql_weight.assign(0)
     system._eps_decay_timesteps = 0
+    #system._optimizer.learning_rate = 0.000002
 
-    online_replay_buffer = FlashbaxReplayBuffer(sequence_length=10, sample_period=1, batch_size=FLAGS.batch_size)
-    system.train_online(online_replay_buffer, max_env_steps=50000, train_period=20)
+    # online_replay_buffer = FlashbaxReplayBuffer(sequence_length=10, sample_period=1, batch_size=FLAGS.batch_size)
+    # system.train_online(online_replay_buffer, max_env_steps=50000, train_period=20)
+    system.train_online(buffer, max_env_steps=50000, train_period=20) # use the same buffer as the one used offline
 
 if __name__ == "__main__":
     app.run(main)

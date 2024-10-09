@@ -1,11 +1,10 @@
 #!/bin/bash
 
-# Number of times to run the command
-num_runs=5
+# Hyperparameter ranges
+learning_rates=(0.00001 0.00005 0.0001 0.0003 0.001)
 
-# Loop to run the command multiple times
-for i in $(seq 5 $num_runs); do
-    echo $i
-    command="python baselines/main.py --seed=$i --system=qmix+cql --dataset=Good --scenario=2s3z"
-    $command
+# Iterate over each combination of hyperparameters
+for i in {1..5}; do
+    # Run the Python script with the current hyperparameter combination
+    python baselines/main.py --learning_rate 0.001 --num_ood_actions 30
 done

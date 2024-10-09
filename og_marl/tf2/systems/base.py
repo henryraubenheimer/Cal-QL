@@ -145,6 +145,7 @@ class BaseMARLSystem:
                     # Train step
                     start_time = time.time()
                     self.counter += 1
+                    #self._optimizer.learning_rate = 0.000001 + 0.000999*self._env_step_ctr/max_env_steps
                     #self._cql_weight.assign(1 - self._env_step_ctr/max_env_steps)
                     #print(self._cql_weight)
                     train_logs = self.train_step(experience)
