@@ -16,7 +16,7 @@ from absl import app, flags
 from og_marl.environments import get_environment
 from og_marl.loggers import JsonWriter, WandbLogger
 from og_marl.offline_dataset import download_and_unzip_vault
-from og_marl.replay_buffers import FlashbaxReplayBuffer
+from og_marl.replay_buffers import FlashbaxReplayBuffer, MixedBuffer
 from og_marl.tf2.networks import CNNEmbeddingNetwork
 from og_marl.tf2.systems import get_system
 from og_marl.tf2.utils import set_growing_gpu_memory
@@ -24,16 +24,29 @@ from og_marl.tf2.utils import set_growing_gpu_memory
 set_growing_gpu_memory()
 
 FLAGS = flags.FLAGS
-flags.DEFINE_string("env", "smac_v1", "Environment name.")
-flags.DEFINE_string("scenario", "2s3z", "Environment scenario name.")
-flags.DEFINE_string("dataset", "Poor", "Dataset type.: 'Good', 'Medium', 'Poor' or 'Replay' ")
-flags.DEFINE_string("system", "qmix+cql", "System name.")
-flags.DEFINE_integer("seed", 42, "Seed.")
-flags.DEFINE_float("trainer_steps", 20000, "Number of training steps.")
-flags.DEFINE_integer("batch_size", 64, "Number of training steps.")
-flags.DEFINE_float("learning_rate", 1e-4, "Learning rate")
-flags.DEFINE_integer("num_ood_actions", 10, "Number of out of distribution actions")
 
+flags.DEFINE_string("env", "smac_v1", "Environment name.")
+flags.DEFINE_string("scenario", "5m_vs_6m", "Environment scenario name.")
+flags.DEFINE_string("dataset", "Good", "Dataset type.: 'Good', 'Medium', 'Poor' or 'Replay' ") # Usually just use the good data, except in an ablation study over data types
+flags.DEFINE_string("system", "qmix+cql", "System name.") # NOTE: just keep on qmix+cql, even for online QMIX, experiment with IDRQN+CQL
+flags.DEFINE_integer("seed", 42, "Seed.")
+
+# Offline params to experiment with
+flags.DEFINE_float("offline_training_steps", 1000, "Number of offline training steps.") # 1000, 2000, 3000, 4000, 5000
+flags.DEFINE_float("offline_cql_weight", 2, "CQL Weight during offline training.") # NOTE: no need to change this
+
+# Online params to experiment with
+flags.DEFINE_string("online_buffer", "mixed", "Set the online buffer to be 'mixed' or 'online'.") # online, mixed 
+flags.DEFINE_float("online_cql_weight", 2, "CQL Weight during online training.") # 0, 1, 2
+
+
+# NOTE: Keep fixed for now
+flags.DEFINE_float("eps_decay_steps", 1000, "Timesteps during which to decay epsilon for online training.") # Probably just keep fixed for online and pre training exps
+
+
+###
+# NOTE: to run online QMIX, set offline_training_steps to zero, online_cql_weight to zero and online_buffer to "online"
+###
 
 def main(_):
     config = {
@@ -41,48 +54,51 @@ def main(_):
         "scenario": FLAGS.scenario,
         "dataset": FLAGS.dataset,
         "system": FLAGS.system,
-        "backend": "tf2",
+        "offline_cql_weight": FLAGS.offline_cql_weight,
+        "online_cql_weight": FLAGS.online_cql_weight,
+    }
+
+    logger = WandbLogger(project="qmix-offline-online", config=config)
+
+    system_kwargs = {
+        "add_agent_id_to_obs": True,
+        "eps_decay_timesteps": FLAGS.eps_decay_steps, # NOTE: lets try keep this fixed at 1000 for offline and online experiments
+        "learning_rate": 3e-4, # NOTE: keep fixed
+        "eps_min": 0.05 # NOTE: keep fixed
     }
 
     env = get_environment(FLAGS.env, FLAGS.scenario)
 
-    r2go = "calql" in FLAGS.system
-    buffer = FlashbaxReplayBuffer(sequence_length=10, sample_period=1, batch_size=FLAGS.batch_size, max_size=20000, rewards_to_go=r2go)
+    system = get_system(FLAGS.system, env, logger, **system_kwargs)
+
+    # Setup Offline Replay Buffer
+    r2go = "calql" in FLAGS.system # NOTE ignore calql for now, focus on CQL 
+    offline_buffer = FlashbaxReplayBuffer(sequence_length=10, sample_period=1, batch_size=64, rewards_to_go=r2go, seed=FLAGS.seed)
 
     download_and_unzip_vault(FLAGS.env, FLAGS.scenario)
 
-    is_vault_loaded = buffer.populate_from_vault(FLAGS.env, FLAGS.scenario, FLAGS.dataset, discount=0.99)
+    is_vault_loaded = offline_buffer.populate_from_vault(FLAGS.env, FLAGS.scenario, FLAGS.dataset, discount=0.99)
     if not is_vault_loaded:
         print("Vault not found. Exiting.")
         return
 
-    #logger = WandbLogger(project=FLAGS.system+" - "+FLAGS.scenario+" - "+FLAGS.dataset, config=config)
-    logger = WandbLogger(project="test", config=config)
+    # Offline Pre-training
+    system._cql_weight.assign(FLAGS.offline_cql_weight)
+    system.train_offline(offline_buffer, max_trainer_steps=FLAGS.offline_training_steps, evaluate_every=500, num_eval_episodes=4)
 
-    json_writer = None
 
-    system_kwargs = {
-        "add_agent_id_to_obs": True,
-        "eps_decay_timesteps": 1, # IMPORTANT: set this to one when doing offline pre-training, else set to 50_000
-        "learning_rate": FLAGS.learning_rate,
-        "num_ood_actions": FLAGS.num_ood_actions
-        # "learning_rate": 1e-4, # 1e-5, 5e-5, 1e-4, 3e-4, 1e-3
-        # "num_ood_actions": 20 # 10, 20, 30
-    }
+    # Setup online Replay buffer
+    online_buffer = FlashbaxReplayBuffer(sequence_length=10, sample_period=1, batch_size=64, max_size=10000, rewards_to_go=r2go, seed=FLAGS.seed) # NOTE: keep max_size fixed
 
-    system = get_system(FLAGS.system, env, logger, **system_kwargs)
-    system._cql_weight.assign(10)
-    system.train_offline(buffer, max_trainer_steps=FLAGS.trainer_steps, json_writer=json_writer, evaluate_every=500, num_eval_episodes=4)
+    if FLAGS.online_buffer == "mixed":
+        online_buffer = MixedBuffer(online_buffer, offline_buffer) # setup mixed buffer 50/50 online/offline batches
+    elif FLAGS.online_buffer != "online":
+        raise ValueError(f"Unrecognised online buffer type - {FLAGS.online_buffer}")
 
-    # Swap to online
+    # Online training
     system._env_step_ctr = 0.0
-    system._cql_weight.assign(0)
-    system._eps_decay_timesteps = 0
-    #system._optimizer.learning_rate = 0.000002
-
-    # online_replay_buffer = FlashbaxReplayBuffer(sequence_length=10, sample_period=1, batch_size=FLAGS.batch_size)
-    # system.train_online(online_replay_buffer, max_env_steps=50000, train_period=20)
-    system.train_online(buffer, max_env_steps=50000, train_period=20) # use the same buffer as the one used offline
+    system._cql_weight.assign(FLAGS.online_cql_weight)
+    system.train_online(online_buffer, max_env_steps=100000, train_period=20) # NOTE: keep environment steps fixed and train period
 
 if __name__ == "__main__":
     app.run(main)

@@ -26,6 +26,55 @@ from flashbax.vault import Vault
 Experience = Dict[str, Array]
 
 
+def concatenate_dicts(dict1, dict2, axis=0):
+    result = {}
+    for key in dict1:
+        if isinstance(dict1[key], dict) and isinstance(dict2[key], dict):
+            result[key] = concatenate_dicts(dict1[key], dict2[key], axis=axis)
+        else:
+            result[key] = jax.numpy.concat((dict1[key], dict2[key]), axis=axis)
+    return result
+
+class MixedBuffer:
+
+    def __init__(
+        self,
+        online_buffer,
+        offline_buffer
+    ):
+        
+        self.online_buffer = online_buffer
+        self.offline_buffer = offline_buffer
+
+    def add(
+        self,
+        observations: Dict[str, np.ndarray],
+        actions: Dict[str, np.ndarray],
+        rewards: Dict[str, np.ndarray],
+        terminals: Dict[str, np.ndarray],
+        truncations: Dict[str, np.ndarray],
+        infos: Dict[str, Any],
+        discount: float = 0.99
+    ) -> None:
+        self.online_buffer.add(
+            observations,
+            actions,
+            rewards,
+            terminals,
+            truncations,
+            infos,
+            discount
+        )
+
+    def sample(self) -> Experience:
+        online_batch = tree.map_structure(lambda x: x[:int(x.shape[0]/2)], self.online_buffer.sample())
+        offline_batch = tree.map_structure(lambda x: x[:int(x.shape[0]/2)], self.offline_buffer.sample())
+
+        combined_batch = concatenate_dicts(online_batch, offline_batch)
+
+        return combined_batch
+
+
 class FlashbaxReplayBuffer:
     def __init__(
         self,
@@ -52,7 +101,7 @@ class FlashbaxReplayBuffer:
         )
 
         self._buffer_sample_fn = jax.jit(self._replay_buffer.sample)
-        self._buffer_add_fn = jax.jit(self._replay_buffer.add)
+        self._buffer_add_fn = jax.jit(self._replay_buffer.add, donate_argnums=0)
 
         self._buffer_state: TrajectoryBufferState = None
         self._rng_key = jax.random.PRNGKey(seed)

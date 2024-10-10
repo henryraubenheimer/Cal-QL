@@ -178,9 +178,8 @@ class QMIXCALQLSystem(QMIXSystem):
 
                 # Mixing
                 mixed_ood_qs = self._mixer(ood_qs, env_state_embeddings)  # [B, T, 1]
+                mixed_ood_qs = tf.maximum(mixed_ood_qs, rewards_to_go)
                 all_mixed_ood_qs.append(mixed_ood_qs)  # [B, T, Ra]
-
-            chosen_action_qs = tf.maximum(chosen_action_qs, rewards_to_go)
 
             all_mixed_ood_qs.append(chosen_action_qs)  # [B, T, Ra + 1]
             all_mixed_ood_qs = tf.concat(all_mixed_ood_qs, axis=-1)

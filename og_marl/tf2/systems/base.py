@@ -123,7 +123,10 @@ class BaseMARLSystem:
                 time_to_step = end_time - start_time
 
                 # Add step to replay buffer
+                start_time = time.time()
                 replay_buffer.add(observations, actions, rewards, terminals, truncations, infos, self._discount)
+                end_time = time.time()
+                time_to_add_to_replay = end_time - start_time
 
                 # Critical!!
                 observations = next_observations
@@ -153,18 +156,14 @@ class BaseMARLSystem:
                     time_train_step = end_time - start_time
 
                     train_steps_per_second = 1 / (time_train_step + time_to_sample)
-                    env_steps_per_second = 1 / (time_to_step + time_for_action_selection)
 
                     train_logs = {
                         **train_logs,
                         **self.get_stats(),
                         "Environment Steps": self._env_step_ctr,
                         "Time to Sample": time_to_sample,
-                        "Time for Action Selection": time_for_action_selection,
-                        "Time to Step Env": time_to_step,
                         "Time for Train Step": time_train_step,
                         "Train Steps Per Second": train_steps_per_second,
-                        "Env Steps Per Second": env_steps_per_second,
                     }
 
                     self._logger.write(train_logs, force=True)
@@ -173,20 +172,26 @@ class BaseMARLSystem:
                     break
 
             episodes += 1
+
             if episodes % 1 == 0:  # TODO: make variable
+
+                env_steps_per_second = 1 / (time_to_step + time_for_action_selection)
+
                 self._logger.write(
                     {
                         "Episodes": episodes,
                         "Episode Return": episode_return,
                         "Environment Steps": self._env_step_ctr,
+                        "Time for Action Selection": time_for_action_selection,
+                        "Time to Step Env": time_to_step,
+                        "Time to add to Replay": time_to_add_to_replay,
+                        "Env Steps Per Second": env_steps_per_second,
                     },
                     force=True,
                 )
 
             if self._env_step_ctr > max_env_steps:
                 break
-
-        print('\nCOUNTER: '+str(self.counter)+'\n')
 
     def train_offline(
         self,

@@ -50,6 +50,7 @@ class QMIXCQLSystem(QMIXSystem):
         mixer_embed_dim: int = 32,
         mixer_hyper_dim: int = 64,
         discount: float = 0.99,
+        eps_min: float = 0.05,
         eps_decay_timesteps: int = 50000,
         target_update_period: int = 200,
         learning_rate: float = 3e-4,
@@ -66,6 +67,7 @@ class QMIXCQLSystem(QMIXSystem):
             mixer_hyper_dim=mixer_hyper_dim,
             add_agent_id_to_obs=add_agent_id_to_obs,
             discount=discount,
+            eps_min=eps_min,
             eps_decay_timesteps=eps_decay_timesteps,
             target_update_period=target_update_period,
             learning_rate=learning_rate,
@@ -163,9 +165,15 @@ class QMIXCQLSystem(QMIXSystem):
             #### CQL ####
             #############
 
-            random_ood_actions = tf.random.uniform(
-                shape=(self._num_ood_actions, B, T, N), minval=0, maxval=A, dtype=tf.dtypes.int64
-            )  # [Ra, B, T, N]
+            # Sample legal random actions
+            repeated_legals = tf.stack([legal_actions] * self._num_ood_actions, axis=0)
+            repeated_legals = tf.reshape(repeated_legals, (-1, A))
+            random_ood_actions = tf.random.categorical(
+                repeated_legals / tf.reduce_sum(repeated_legals, axis=-1, keepdims=True),
+                1,
+                dtype="int32",
+            )
+            random_ood_actions = tf.reshape(random_ood_actions, (self._num_ood_actions, B, T, N))
 
             all_mixed_ood_qs = []
             for i in range(self._num_ood_actions):
@@ -176,15 +184,15 @@ class QMIXCQLSystem(QMIXSystem):
                 )  # [B, T, N]
 
                 # Mixing
-                mixed_ood_qs = self._mixer(ood_qs, env_state_embeddings)  # [B, T, 1]
+                mixed_ood_qs = self._mixer(ood_qs, env_states)  # [B, T, 1]
                 all_mixed_ood_qs.append(mixed_ood_qs)  # [B, T, Ra]
 
             all_mixed_ood_qs.append(chosen_action_qs)  # [B, T, Ra + 1]
             all_mixed_ood_qs = tf.concat(all_mixed_ood_qs, axis=-1)
 
             cql_loss = tf.reduce_mean(
-                tf.reduce_logsumexp(all_mixed_ood_qs, axis=-1, keepdims=True)[:, :-1]
-            ) - tf.reduce_mean(chosen_action_qs[:, :-1])
+                tf.reduce_logsumexp(all_mixed_ood_qs, axis=-1, keepdims=True)
+            ) - tf.reduce_mean(chosen_action_qs)
 
             #############
             #### end ####
@@ -228,6 +236,7 @@ class QMIXCQLSystem(QMIXSystem):
 
         return {
             "Loss": loss,
-            "Mean Q-values": tf.reduce_mean(qs_out),
+            "Mean Qs before mix": tf.reduce_mean(qs_out),
             "Mean Chosen Q-values": tf.reduce_mean(chosen_action_qs),
+            "Mean OOD Q-Values": tf.reduce_mean(all_mixed_ood_qs)
         }

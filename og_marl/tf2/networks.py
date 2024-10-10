@@ -67,7 +67,8 @@ class QMixer(snt.Module):
         b1 = self.hyper_b_1(states)
         w1 = tf.reshape(w1, (-1, self.num_agents, self.embed_dim))
         b1 = tf.reshape(b1, (-1, 1, self.embed_dim))
-        hidden = tf.nn.elu(tf.matmul(agent_qs, w1) + b1)
+        hidden = tf.matmul(agent_qs, w1) + b1
+        hidden = tf.nn.elu(hidden)
 
         # Second layer
         w_final = self.hyper_w_final(states)
