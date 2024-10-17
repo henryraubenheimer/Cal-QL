@@ -26,8 +26,8 @@ set_growing_gpu_memory()
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string("env", "smac_v1", "Environment name.")
-flags.DEFINE_string("scenario", "5m_vs_6m", "Environment scenario name.")
-flags.DEFINE_string("dataset", "Good", "Dataset type.: 'Good', 'Medium', 'Poor' or 'Replay' ") # Usually just use the good data, except in an ablation study over data types
+flags.DEFINE_string("scenario", "2s3z", "Environment scenario name.")
+flags.DEFINE_string("dataset", "Poor", "Dataset type.: 'Good', 'Medium', 'Poor' or 'Replay' ") # Usually just use the good data, except in an ablation study over data types
 flags.DEFINE_string("system", "qmix+cql", "System name.") # NOTE: just keep on qmix+cql, even for online QMIX, experiment with IDRQN+CQL
 flags.DEFINE_integer("seed", 42, "Seed.")
 
@@ -37,12 +37,12 @@ flags.DEFINE_float("offline_cql_weight", 2, "CQL Weight during offline training.
 
 # Online params to experiment with
 flags.DEFINE_string("online_buffer", "mixed", "Set the online buffer to be 'mixed' or 'online'.") # online, mixed 
-flags.DEFINE_float("online_cql_weight", 2, "CQL Weight during online training.") # 0, 1, 2
-
+flags.DEFINE_float("online_cql_weight", 0, "CQL Weight during online training.") # 0, 1, 2
 
 # NOTE: Keep fixed for now
 flags.DEFINE_float("eps_decay_steps", 1000, "Timesteps during which to decay epsilon for online training.") # Probably just keep fixed for online and pre training exps
 
+flags.DEFINE_string("suffix", "", "Additional information to be contained in the WandB project name.")
 
 ###
 # NOTE: to run online QMIX, set offline_training_steps to zero, online_cql_weight to zero and online_buffer to "online"
@@ -58,7 +58,10 @@ def main(_):
         "online_cql_weight": FLAGS.online_cql_weight,
     }
 
-    logger = WandbLogger(project="qmix-offline-online", config=config)
+    if FLAGS.suffix != "":
+        FLAGS.suffix = "_("+FLAGS.suffix+")"
+    project_name = "+"+FLAGS.system+"_"+str(FLAGS.offline_training_steps)+"_"+FLAGS.scenario+"_"+FLAGS.dataset+FLAGS.suffix
+    logger = WandbLogger(project=project_name, config=config)
 
     system_kwargs = {
         "add_agent_id_to_obs": True,
@@ -84,7 +87,7 @@ def main(_):
 
     # Offline Pre-training
     system._cql_weight.assign(FLAGS.offline_cql_weight)
-    system.train_offline(offline_buffer, max_trainer_steps=FLAGS.offline_training_steps, evaluate_every=500, num_eval_episodes=4)
+    system.train_offline(offline_buffer, max_trainer_steps=FLAGS.offline_training_steps, evaluate_every=100, num_eval_episodes=4)
 
 
     # Setup online Replay buffer

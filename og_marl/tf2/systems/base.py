@@ -88,6 +88,7 @@ class BaseMARLSystem:
         train_period: int = 20,
     ) -> None:
         """Method to train the system online."""
+        episode_returns = []
         episodes = 0
         while True:  # breaks out when env_steps > max_env_steps
             self.reset()  # reset the system
@@ -98,7 +99,7 @@ class BaseMARLSystem:
             else:
                 observations = observations_
                 infos = {}
-
+ 
             episode_return = 0.0
             while True:
                 if "legals" in infos:
@@ -171,6 +172,10 @@ class BaseMARLSystem:
                 if all(terminals.values()) or all(truncations.values()):
                     break
 
+            episode_returns.append(episode_return)
+            if len(episode_returns) > 40:
+                episode_returns.pop(0)
+
             episodes += 1
 
             if episodes % 1 == 0:  # TODO: make variable
@@ -181,6 +186,7 @@ class BaseMARLSystem:
                     {
                         "Episodes": episodes,
                         "Episode Return": episode_return,
+                        "Average Return": np.mean(episode_returns),
                         "Environment Steps": self._env_step_ctr,
                         "Time for Action Selection": time_for_action_selection,
                         "Time to Step Env": time_to_step,
